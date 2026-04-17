@@ -87,3 +87,4 @@ class ClusterOnboardingConfirmResponse(BaseModel):
     cluster_type: str
     auth_method: str
     validated_at: datetime
+    cluster_id: Optional[int] = None  # DB id of the persisted cluster record

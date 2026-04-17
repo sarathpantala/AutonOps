@@ -8,7 +8,12 @@ class Settings(BaseSettings):
     secret_key: str
     database_url: str
     log_level: str = "INFO"
-    openai_api_key: str
+
+    # AI providers — at least one must be configured
+    openai_api_key: Optional[str] = None
+    anthropic_api_key: Optional[str] = None
+    ai_provider: str = "openai"  # openai | claude
+
     kubeconfig_path: Optional[str] = None
     jwt_secret_key: str
     jwt_algorithm: str = "HS256"

@@ -1,9 +1,8 @@
 import { ChangeEvent, useState } from 'react';
 import { motion } from 'framer-motion';
+import { API_BASE_URL } from '../lib/api';
 
-const API_BASE_URL = 'http://localhost:8000';
-
-type ClusterType = 'eks' | 'gke' | 'openshift';
+type ClusterType = 'eks' | 'gke' | 'openshift' | 'kind';
 type AuthMethod = 'kubeconfig' | 'service-account';
 
 type WorkspaceOption = {
@@ -32,7 +31,45 @@ const options: Array<{ value: ClusterType; label: string; helper: string }> = [
   { value: 'eks', label: 'EKS', helper: 'Amazon Elastic Kubernetes Service' },
   { value: 'gke', label: 'GKE', helper: 'Google Kubernetes Engine' },
   { value: 'openshift', label: 'OpenShift', helper: 'Red Hat OpenShift' },
+  { value: 'kind', label: 'Kind', helper: 'Kubernetes in Docker (local)' },
 ];
+
+function toErrorMessage(detail: unknown, fallback: string): string {
+  if (!detail) {
+    return fallback;
+  }
+
+  if (typeof detail === 'string') {
+    return detail;
+  }
+
+  if (Array.isArray(detail)) {
+    const first = detail[0];
+    if (typeof first === 'string') {
+      return first;
+    }
+    if (first && typeof first === 'object') {
+      const firstObj = first as Record<string, unknown>;
+      if (typeof firstObj.msg === 'string') {
+        return firstObj.msg;
+      }
+    }
+    return fallback;
+  }
+
+  if (typeof detail === 'object') {
+    const detailObj = detail as Record<string, unknown>;
+    if (typeof detailObj.message === 'string') {
+      return detailObj.message;
+    }
+    if (typeof detailObj.msg === 'string') {
+      return detailObj.msg;
+    }
+    return fallback;
+  }
+
+  return fallback;
+}
 
 function getAuthHeaders() {
   const storedToken = localStorage.getItem('access_token');
@@ -139,34 +176,27 @@ export default function ClusterOnboardingWizard({ workspaces, selectedWorkspaceI
       });
       const validateData = await validateResponse.json();
       if (!validateResponse.ok) {
-        throw new Error(validateData.detail ?? 'Failed to validate cluster.');
+        throw new Error(toErrorMessage(validateData.detail, 'Failed to validate cluster.'));
       }
 
-      const confirmResponse = await fetch(`${API_BASE_URL}/k8s/onboarding/confirm`, {
+      const confirmResponse = await fetch(`${API_BASE_URL}/k8s/onboarding/confirm?workspace_id=${selectedWorkspaceId}`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(payload),
       });
       const confirmData = await confirmResponse.json();
       if (!confirmResponse.ok) {
-        throw new Error(confirmData.detail ?? 'Failed to confirm cluster.');
+        throw new Error(toErrorMessage(confirmData.detail, 'Failed to confirm cluster.'));
       }
 
-      const createResponse = await fetch(`${API_BASE_URL}/clusters/`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          name: clusterName.trim(),
-          cluster_type: clusterType,
-          workspace_id: selectedWorkspaceId,
-        }),
+      onClusterCreated({
+        id: Number(confirmData.cluster_id),
+        name: clusterName.trim(),
+        cluster_type: clusterType,
+        status: 'connected',
+        workspace_id: selectedWorkspaceId,
+        created_at: new Date().toISOString(),
       });
-      const createData = await createResponse.json();
-      if (!createResponse.ok) {
-        throw new Error(createData.detail ?? 'Failed to save cluster.');
-      }
-
-      onClusterCreated(createData as ClusterRecord);
       setSuccess('Cluster validated and added successfully.');
       setClusterName('');
       setKubeconfigContent('');

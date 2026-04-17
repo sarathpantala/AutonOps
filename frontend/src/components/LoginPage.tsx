@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
+import { API_BASE_URL } from '../lib/api';
 
 type LoginPageProps = {
   onLogin?: (email: string, password: string) => Promise<void>;
@@ -94,7 +95,7 @@ export default function LoginPage({ onLogin, onSignup, onGoogleLogin }: LoginPag
       if (onGoogleLogin) {
         await onGoogleLogin();
       } else {
-        window.location.assign('http://localhost:8000/auth/google/login?redirect=true');
+        window.location.assign(`${API_BASE_URL}/auth/google/login?redirect=true`);
       }
     } catch {
       setError('Google login failed.');

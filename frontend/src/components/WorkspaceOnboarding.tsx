@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { API_BASE_URL } from '../lib/api';
 
 interface WorkspaceOnboardingProps {
   onWorkspaceCreated: (workspaceId: number, workspaceName: string) => void;
@@ -21,7 +22,7 @@ export default function WorkspaceOnboarding({ onWorkspaceCreated }: WorkspaceOnb
     setError('');
 
     try {
-      const response = await fetch('http://localhost:8000/workspaces/', {
+      const response = await fetch(`${API_BASE_URL}/workspaces/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

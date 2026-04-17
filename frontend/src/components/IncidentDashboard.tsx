@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import SkeletonLoader from './SkeletonLoader';
 import IncidentDetailsPanel from './IncidentDetailsPanel';
-
-const API_BASE_URL = 'http://localhost:8000';
+import { API_BASE_URL } from '../lib/api';
 
 type ApiIncident = {
   id: number;

@@ -23,14 +23,16 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/* && \
     python -m venv /opt/venv
 
+# Copy only dependency manifest first so pip layer is cached across code changes
 COPY pyproject.toml README.md ./
-COPY app ./app
-COPY alembic ./alembic
-COPY alembic.ini ./
-
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir hatchling && \
     pip install --no-cache-dir .
+
+# Copy source after deps are installed
+COPY app ./app
+COPY alembic ./alembic
+COPY alembic.ini ./
 
 FROM builder AS dev-builder
 
@@ -42,10 +44,7 @@ ENV ENVIRONMENT=production \
     UVICORN_RELOAD=false
 
 COPY --from=builder /opt/venv /opt/venv
-COPY pyproject.toml README.md ./
-COPY app ./app
-COPY alembic ./alembic
-COPY alembic.ini ./
+COPY --from=builder /app /app
 COPY start.sh /start.sh
 
 RUN chmod +x /start.sh

@@ -4,6 +4,7 @@ from typing import List, Optional
 from fastapi import HTTPException
 
 from app.models import Incident
+from app.models.incident import IncidentStatus as IncidentModelStatus
 from app.schemas import IncidentCreate, IncidentUpdate
 
 
@@ -25,7 +26,10 @@ class IncidentService:
         return incident
 
     async def create_incident(self, incident: IncidentCreate) -> Incident:
-        db_incident = Incident(**incident.dict())
+        payload = incident.dict()
+        status_value = incident.status.value if hasattr(incident.status, "value") else str(incident.status)
+        payload["status"] = IncidentModelStatus[status_value.upper()]
+        db_incident = Incident(**payload)
         self.db.add(db_incident)
         await self.db.commit()
         await self.db.refresh(db_incident)
@@ -34,6 +38,10 @@ class IncidentService:
     async def update_incident(self, incident_id: int, incident_update: IncidentUpdate) -> Incident:
         incident = await self.get_incident(incident_id)
         update_data = incident_update.dict(exclude_unset=True)
+        if "status" in update_data and update_data["status"] is not None:
+            status_raw = update_data["status"]
+            status_value = status_raw.value if hasattr(status_raw, "value") else str(status_raw)
+            update_data["status"] = IncidentModelStatus[status_value.upper()]
         for field, value in update_data.items():
             setattr(incident, field, value)
         await self.db.commit()

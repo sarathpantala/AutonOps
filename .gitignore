@@ -13,3 +13,4 @@ frontend/dist/
 **/.env.*
 **/.venv/
 **/venv/
+test/*.yaml

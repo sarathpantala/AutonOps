@@ -3,6 +3,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 import os
 import tempfile
+from functools import partial
 import kubernetes
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
@@ -20,6 +21,35 @@ from app.schemas import (
     ClusterValidationResponse,
     ClusterOnboardingConfirmResponse,
 )
+
+
+def _running_in_docker() -> bool:
+    return os.path.exists("/.dockerenv")
+
+
+def _normalize_kubeconfig_servers(kubeconfig_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    When backend runs in Docker, kubeconfig entries like
+    https://localhost:<port> are unreachable from the container.
+    Rewrite them to host.docker.internal so the container can reach
+    the host's Kind API server.
+    """
+    if not _running_in_docker():
+        return kubeconfig_dict
+
+    clusters = kubeconfig_dict.get("clusters", [])
+    for entry in clusters:
+        cluster = entry.get("cluster", {})
+        server = cluster.get("server")
+        if isinstance(server, str):
+            if "https://localhost:" in server:
+                cluster["server"] = server.replace("https://localhost:", "https://host.docker.internal:")
+                cluster.setdefault("tls-server-name", "localhost")
+            elif "https://127.0.0.1:" in server:
+                cluster["server"] = server.replace("https://127.0.0.1:", "https://host.docker.internal:")
+                cluster.setdefault("tls-server-name", "localhost")
+
+    return kubeconfig_dict
 
 
 class KubernetesService:
@@ -56,6 +86,8 @@ class KubernetesService:
             if not isinstance(kubeconfig_dict, dict):
                 raise ValueError("Kubeconfig file must contain a valid Kubernetes config object.")
 
+            kubeconfig_dict = _normalize_kubeconfig_servers(kubeconfig_dict)
+
             return config.kube_config.new_client_from_config_dict(kubeconfig_dict), None
 
         if payload.auth_method == "service-account":
@@ -91,8 +123,10 @@ class KubernetesService:
             if not payload.cluster_name.strip():
                 raise ValueError("Cluster name is required.")
 
-            if payload.cluster_type not in {"eks", "gke", "openshift"}:
-                raise ValueError("Unsupported cluster type.")
+            if payload.cluster_type not in {"eks", "gke", "openshift", "kind", "other"}:
+                raise ValueError(
+                    "Unsupported cluster type. Supported: eks, gke, openshift, kind, other"
+                )
 
             api_client, cert_path = self._build_api_client(payload)
             version_api = client.VersionApi(api_client)
@@ -149,7 +183,8 @@ class KubernetesService:
         try:
             # Run in thread pool since k8s client is synchronous
             loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, operation_func, *args, **kwargs)
+            operation = partial(operation_func, *args, **kwargs)
+            return await loop.run_in_executor(None, operation)
         except ApiException as e:
             logger.error(f"Kubernetes API error: {e}")
             raise

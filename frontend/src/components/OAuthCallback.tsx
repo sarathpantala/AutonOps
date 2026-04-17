@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { API_BASE_URL } from '../lib/api';
 
 export default function OAuthCallback() {
   const [loading, setLoading] = useState(true);
@@ -21,7 +22,7 @@ export default function OAuthCallback() {
       try {
         // Exchange code for token
         const response = await fetch(
-          `http://localhost:8000/auth/google/callback?code=${encodeURIComponent(code)}${state ? `&state=${encodeURIComponent(state)}` : ''}`
+          `${API_BASE_URL}/auth/google/callback?code=${encodeURIComponent(code)}${state ? `&state=${encodeURIComponent(state)}` : ''}`
         );
 
         const data = await response.json();
@@ -31,6 +32,7 @@ export default function OAuthCallback() {
         }
 
         document.cookie = `access_token=${data.access_token}; path=/; samesite=lax; max-age=${60 * 60 * 24}`;
+        localStorage.setItem('access_token', data.access_token);
 
         // Redirect to root which will route based on workspace status
         window.location.replace('/');
