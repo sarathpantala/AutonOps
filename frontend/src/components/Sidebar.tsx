@@ -1,4 +1,5 @@
 import {
+  Activity,
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
@@ -7,6 +8,7 @@ import {
   Plus,
   Server,
   Sparkles,
+  Zap,
 } from 'lucide-react';
 
 type SidebarProps = {
@@ -21,7 +23,9 @@ type SidebarProps = {
 const navItems = [
   { label: 'Overview', icon: LayoutDashboard },
   { label: 'Incidents', icon: AlertTriangle },
+  { label: 'Services', icon: Activity },
   { label: 'Clusters', icon: Server },
+  { label: 'Actions', icon: Zap },
   { label: 'Workspace', icon: Layers },
   { label: 'Add Cluster', icon: Plus },
   { label: 'Chat', icon: Sparkles },

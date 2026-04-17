@@ -160,4 +160,33 @@ html.dark body {
     color: var(--color-text-primary);
     font-weight: 600;
   }
+
+  .ui-badge {
+    @apply inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold;
+  }
+
+  .ui-badge-red {
+    @apply bg-rose-50 text-rose-600;
+  }
+
+  .ui-badge-amber {
+    @apply bg-amber-50 text-amber-700;
+  }
+
+  .ui-badge-blue {
+    @apply bg-sky-50 text-sky-600;
+  }
+
+  .ui-badge-green {
+    @apply bg-emerald-50 text-emerald-700;
+  }
+
+  .ui-badge-gray {
+    @apply bg-gray-100 text-gray-600;
+  }
+
+  .ui-section-label {
+    @apply text-xs font-semibold uppercase tracking-[0.14em];
+    color: var(--color-text-muted);
+  }
 }

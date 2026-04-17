@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BrowserRouter as Router, Navigate, Route, Routes } from 'react-router-dom';
-import { CircleDashed, Filter, RefreshCw, Search } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, CircleDashed, Filter, RefreshCw, Search, Send, Server, Sparkles, TrendingUp, Zap } from 'lucide-react';
 import ClusterOnboardingWizard from './components/ClusterOnboardingWizard';
 import Header from './components/Header';
 import LoginPage from './components/LoginPage';
@@ -9,7 +10,7 @@ import Sidebar from './components/Sidebar';
 
 const API_BASE_URL = 'http://localhost:8000';
 
-type Section = 'Overview' | 'Incidents' | 'Clusters' | 'Workspace' | 'Add Cluster' | 'Chat';
+type Section = 'Overview' | 'Incidents' | 'Services' | 'Clusters' | 'Actions' | 'Workspace' | 'Add Cluster' | 'Chat';
 type ThemeMode = 'light' | 'auto' | 'dark';
 
 const sectionMeta: Record<Section, { title: string; subtitle: string; searchPlaceholder: string }> = {
@@ -42,6 +43,16 @@ const sectionMeta: Record<Section, { title: string; subtitle: string; searchPlac
     title: 'Chat',
     subtitle: 'Ask the AI operator for summaries, fixes, and safe rollout guidance.',
     searchPlaceholder: 'Search prompts',
+  },
+  Services: {
+    title: 'Services',
+    subtitle: 'Monitor service health, resource usage, and active incidents per service.',
+    searchPlaceholder: 'Search services',
+  },
+  Actions: {
+    title: 'Actions',
+    subtitle: 'Review and apply AI-recommended remediation actions with confidence scoring.',
+    searchPlaceholder: 'Search actions',
   },
 };
 
@@ -315,6 +326,33 @@ function WorkspaceEmptyState({ onCreateWorkspace }: { onCreateWorkspace: () => v
   );
 }
 
+function StatCard({
+  label,
+  value,
+  sub,
+  icon: Icon,
+  accent,
+}: {
+  label: string;
+  value: string | number;
+  sub?: string;
+  icon: LucideIcon;
+  accent?: string;
+}) {
+  return (
+    <div className="ui-card flex items-start gap-4 p-5">
+      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${accent ?? 'bg-[#F3F4F6]'}`}>
+        <Icon size={20} className={accent ? 'text-white' : 'text-[var(--color-text-muted)]'} />
+      </div>
+      <div>
+        <p className="ui-section-label">{label}</p>
+        <p className="mt-1 text-2xl font-bold text-[var(--color-text-primary)]">{value}</p>
+        {sub ? <p className="mt-0.5 text-xs text-[var(--color-text-muted)]">{sub}</p> : null}
+      </div>
+    </div>
+  );
+}
+
 function OverviewPage({
   services,
   incidents,
@@ -328,7 +366,8 @@ function OverviewPage({
   error: string;
   onFix: (incidentId: number) => void;
 }) {
-  const openIncidents = incidents.filter((incident) => incident.status !== 'resolved').slice(0, 6);
+  const openIncidents = incidents.filter((incident) => incident.status !== 'resolved').slice(0, 8);
+  const healthyServices = services.filter((s) => s.is_active).length;
   const serviceNameById = useMemo(() => {
     const map = new Map<number, string>();
     services.forEach((service) => map.set(service.id, service.name));
@@ -337,55 +376,107 @@ function OverviewPage({
 
   return (
     <div className="space-y-6">
-      {error ? <div className="text-sm text-rose-300">{error}</div> : null}
+      {error ? <div className="rounded-md bg-rose-50 px-4 py-3 text-sm text-rose-600">{error}</div> : null}
 
+      {/* Stat Cards */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Active Incidents"
+          value={loading ? '—' : openIncidents.length}
+          sub={openIncidents.length > 0 ? 'Requires attention' : 'All clear'}
+          icon={AlertTriangle}
+          accent={openIncidents.length > 0 ? 'bg-rose-500' : undefined}
+        />
+        <StatCard
+          label="Service Health"
+          value={loading ? '—' : `${healthyServices} / ${services.length}`}
+          sub="Healthy services"
+          icon={Activity}
+          accent={healthyServices === services.length && services.length > 0 ? 'bg-emerald-500' : undefined}
+        />
+        <StatCard
+          label="Avg Confidence"
+          value="87%"
+          sub="Root cause accuracy"
+          icon={TrendingUp}
+        />
+        <StatCard
+          label="Open Actions"
+          value="4"
+          sub="Pending remediation"
+          icon={Zap}
+        />
+      </div>
+
+      {/* Active Incidents */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-medium text-[var(--color-text-primary)]">Active Incidents</h2>
-          <span className="text-xs uppercase tracking-[0.18em] text-[var(--color-text-secondary)]">Next step: Fix highest severity</span>
+          <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Active Incidents</h2>
+          <span className="text-xs text-[var(--color-text-muted)]">Fix highest severity first</span>
         </div>
-
         <div className="ui-card overflow-hidden">
           {loading ? (
-            <div className="px-4 py-4 text-sm text-[var(--color-text-secondary)]">Loading incidents...</div>
+            <div className="flex items-center gap-2 px-4 py-5 text-sm text-[var(--color-text-secondary)]">
+              <CircleDashed size={16} className="animate-spin" />
+              Loading incidents...
+            </div>
           ) : openIncidents.length === 0 ? (
-            <div className="px-4 py-4 text-sm text-[var(--color-text-secondary)]">No active incidents. Next: review service health below.</div>
+            <div className="ui-table-empty py-8">
+              <CheckCircle2 size={20} className="text-emerald-500" />
+              <span className="font-medium text-[var(--color-text-primary)]">No active incidents</span>
+              <span className="text-xs text-[var(--color-text-muted)]">Your systems are operating normally.</span>
+            </div>
           ) : (
-            openIncidents.map((incident) => {
-              const severity = incidentSeverity(incident);
-              return (
-                <div key={incident.id} className="ui-table-row flex flex-col gap-3 border-b border-[var(--color-border)] px-4 py-4 last:border-b-0 md:flex-row md:items-center md:justify-between">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-[var(--color-text-primary)]">{serviceNameById.get(incident.service_id) ?? `Service #${incident.service_id}`}</p>
-                    <p className="mt-1 truncate text-sm text-[var(--color-text-secondary)]">{incident.title}</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className={`rounded-md px-2 py-1 text-xs font-semibold uppercase ${severity === 'critical'
-                      ? 'bg-rose-50 text-rose-600'
-                      : severity === 'high'
-                        ? 'bg-amber-50 text-amber-600'
-                        : 'bg-sky-50 text-sky-600'}`}>
-                      {severity}
-                    </span>
-                    <button type="button" onClick={() => onFix(incident.id)} className="ui-primary-btn h-8 px-3 text-xs">
-                      Fix
-                    </button>
-                  </div>
-                </div>
-              );
-            })
+            <table className="ui-table">
+              <thead>
+                <tr>
+                  <th>Service</th>
+                  <th>Summary</th>
+                  <th>Severity</th>
+                  <th>Detected</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {openIncidents.map((incident, index) => {
+                  const severity = incidentSeverity(incident);
+                  return (
+                    <tr
+                      key={incident.id}
+                      className={`ui-table-row ${index < openIncidents.length - 1 ? 'border-b border-[var(--color-border)]' : ''}`}
+                    >
+                      <td className="font-medium text-[var(--color-text-primary)]">
+                        {serviceNameById.get(incident.service_id) ?? `Service #${incident.service_id}`}
+                      </td>
+                      <td className="max-w-[260px] truncate text-[var(--color-text-secondary)]">{incident.title}</td>
+                      <td>
+                        <span className={`ui-badge ${severity === 'critical' ? 'ui-badge-red' : severity === 'high' ? 'ui-badge-amber' : 'ui-badge-blue'}`}>
+                          {severity}
+                        </span>
+                      </td>
+                      <td className="tabular-nums text-[var(--color-text-muted)]">{formatRelativeTime(incident.created_at)}</td>
+                      <td className="text-right">
+                        <button type="button" onClick={() => onFix(incident.id)} className="ui-primary-btn h-8 px-3 text-xs">
+                          Fix
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           )}
         </div>
       </section>
 
+      {/* Service Health */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-medium text-[var(--color-text-primary)]">Services</h2>
-          <span className="text-xs uppercase tracking-[0.18em] text-[var(--color-text-secondary)]">Next step: stabilize unhealthy services</span>
+          <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Service Health</h2>
+          <span className="text-xs text-[var(--color-text-muted)]">Stabilize unhealthy services</span>
         </div>
-
         <div className="ui-card overflow-x-auto">
-          <table className="ui-table min-w-[640px]">
+          <table className="ui-table min-w-[560px]">
             <thead>
               <tr>
                 <th>Name</th>
@@ -399,7 +490,7 @@ function OverviewPage({
                 <tr>
                   <td colSpan={4}>
                     <div className="ui-table-empty">
-                      <CircleDashed size={18} className="ui-table-empty-icon" />
+                      <CircleDashed size={18} className="ui-table-empty-icon animate-spin" />
                       <span>Loading services...</span>
                     </div>
                   </td>
@@ -408,22 +499,22 @@ function OverviewPage({
                 <tr>
                   <td colSpan={4}>
                     <div className="ui-table-empty">
-                      <CircleDashed size={18} className="ui-table-empty-icon" />
-                      <span>No services available yet.</span>
+                      <Server size={18} className="ui-table-empty-icon" />
+                      <span>No services available. Connect a cluster to begin.</span>
                     </div>
                   </td>
                 </tr>
               ) : (
                 services.map((service, index) => (
                   <tr key={service.id} className={`ui-table-row ${index < services.length - 1 ? 'border-b border-[var(--color-border)]' : ''}`}>
-                    <td className="text-[var(--color-text-primary)]">{service.name}</td>
+                    <td className="font-medium text-[var(--color-text-primary)]">{service.name}</td>
                     <td>
-                      <span className={`text-xs font-medium ${service.is_active ? 'text-emerald-600' : 'text-slate-400'}`}>
+                      <span className={`ui-badge ${service.is_active ? 'ui-badge-green' : 'ui-badge-gray'}`}>
                         {service.is_active ? 'Healthy' : 'Inactive'}
                       </span>
                     </td>
-                    <td className="text-[var(--color-text-secondary)]">{serviceCpu(service.id)}</td>
-                    <td className="text-[var(--color-text-secondary)]">{serviceMemory(service.id)}</td>
+                    <td className="tabular-nums text-[var(--color-text-secondary)]">{serviceCpu(service.id)}</td>
+                    <td className="tabular-nums text-[var(--color-text-secondary)]">{serviceMemory(service.id)}</td>
                   </tr>
                 ))
               )}
@@ -453,71 +544,125 @@ function IncidentsPage({
     : 'No service';
 
   if (!selectedIncident) {
-    return <div className="text-sm text-[var(--color-text-secondary)]">No active incidents right now.</div>;
+    return (
+      <div className="ui-card px-6 py-12 text-center">
+        <CheckCircle2 size={24} className="mx-auto mb-3 text-emerald-500" />
+        <p className="font-medium text-[var(--color-text-primary)]">No active incidents</p>
+        <p className="mt-1 text-sm text-[var(--color-text-muted)]">Your systems are operating normally.</p>
+      </div>
+    );
   }
 
   const severity = incidentSeverity(selectedIncident);
   const confidence = confidenceForIncident(selectedIncident.id);
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[320px,1fr]">
-      <section className="ui-card overflow-hidden">
-        <div className="px-4 py-3 text-xs uppercase tracking-[0.16em] text-[var(--color-text-secondary)]">Incident queue</div>
-        <div>
-          {openIncidents.map((incident, index) => (
-            <button
-              key={incident.id}
-              type="button"
-              onClick={() => onSelectIncident(incident.id)}
-              className={`block w-full border-t border-[var(--color-border)] px-4 py-3 text-left transition ${incident.id === selectedIncident.id
-                ? 'bg-[#F3F4F6]'
-                : index % 2 === 0
-                  ? 'bg-white hover:bg-[#F9FAFB]'
-                  : 'hover:bg-[#F9FAFB]'}`}
-            >
-              <p className="text-sm font-medium text-[var(--color-text-primary)]">{incident.title}</p>
-              <p className="mt-1 text-xs text-[var(--color-text-secondary)]">{formatRelativeTime(incident.created_at)}</p>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="ui-card space-y-6 px-5 py-5">
-        <header className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-sm text-[var(--color-text-secondary)]">{serviceName}</p>
-            <h1 className="mt-1 text-xl font-semibold text-[var(--color-text-primary)]">{selectedIncident.title}</h1>
+    <div className="flex gap-6">
+      {/* Left: incident list */}
+      <aside className="hidden w-[280px] shrink-0 lg:block">
+        <div className="ui-card overflow-hidden">
+          <div className="border-b border-[var(--color-border)] px-4 py-3">
+            <p className="ui-section-label">Queue · {openIncidents.length}</p>
           </div>
-          <span className={`rounded-md px-3 py-1 text-xs font-semibold uppercase ${severity === 'critical'
-            ? 'bg-rose-50 text-rose-600'
-            : severity === 'high'
-              ? 'bg-amber-50 text-amber-600'
-              : 'bg-sky-50 text-sky-600'}`}>
-            {severity}
-          </span>
-        </header>
+          <div className="divide-y divide-[var(--color-border)]">
+            {openIncidents.map((incident) => {
+              const sev = incidentSeverity(incident);
+              const isActive = incident.id === selectedIncident.id;
+              return (
+                <button
+                  key={incident.id}
+                  type="button"
+                  onClick={() => onSelectIncident(incident.id)}
+                  className={`w-full px-4 py-3 text-left transition duration-100 ease-out ${isActive ? 'border-l-2 border-l-[var(--color-primary)] bg-[#F9FAFB]' : 'hover:bg-[#F9FAFB]'}`}
+                >
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <span className={`ui-badge ${sev === 'critical' ? 'ui-badge-red' : sev === 'high' ? 'ui-badge-amber' : 'ui-badge-blue'}`}>
+                      {sev}
+                    </span>
+                    <span className="text-[11px] text-[var(--color-text-muted)]">{formatRelativeTime(incident.created_at)}</span>
+                  </div>
+                  <p className="text-sm font-medium leading-5 text-[var(--color-text-primary)]">{incident.title}</p>
+                  <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+                    {services.find((s) => s.id === incident.service_id)?.name ?? `Service #${incident.service_id}`}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </aside>
 
-        <div className="space-y-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.16em] text-[var(--color-text-secondary)]">Root cause</p>
-            <p className="mt-2 rounded-md bg-[#F9FAFB] px-4 py-3 text-sm leading-6 text-[var(--color-text-primary)]">
-              {incidentRootCause(selectedIncident)}
+      {/* Right: detail panel */}
+      <section className="min-w-0 flex-1">
+        <div className="ui-card space-y-6 p-6">
+          {/* Header */}
+          <header>
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <span className={`ui-badge ${severity === 'critical' ? 'ui-badge-red' : severity === 'high' ? 'ui-badge-amber' : 'ui-badge-blue'}`}>
+                {severity}
+              </span>
+              <span className="ui-badge ui-badge-gray">{selectedIncident.status}</span>
+            </div>
+            <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">{selectedIncident.title}</h1>
+            <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+              {serviceName} · detected {formatRelativeTime(selectedIncident.created_at)}
             </p>
-          </div>
+          </header>
 
+          {/* Root cause */}
           <div>
-            <p className="text-xs uppercase tracking-[0.16em] text-[var(--color-text-secondary)]">Confidence score</p>
-            <p className="mt-2 text-2xl font-semibold text-[var(--color-text-primary)]">{confidence}%</p>
+            <p className="ui-section-label mb-2">Root Cause</p>
+            <div className="rounded-md border border-[var(--color-border)] bg-[#F9FAFB] px-4 py-3 text-sm leading-6 text-[var(--color-text-primary)]">
+              {incidentRootCause(selectedIncident)}
+            </div>
           </div>
-        </div>
 
-        <div className="space-y-3">
-          <button type="button" className="ui-primary-btn h-11 w-full">
-            Fix Issue
-          </button>
-          <div className="grid grid-cols-2 gap-3">
-            <button type="button" className="ui-ghost-btn border border-[var(--color-border)]">Restart</button>
-            <button type="button" className="ui-ghost-btn border border-[var(--color-border)]">Scale</button>
+          {/* Confidence + Risk */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="rounded-lg border border-[var(--color-border)] p-4">
+              <p className="ui-section-label">Confidence Score</p>
+              <p className="mt-2 text-3xl font-bold text-[var(--color-text-primary)]">{confidence}%</p>
+              <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-[#E5E7EB]">
+                <div
+                  className="h-full rounded-full bg-[var(--color-primary)] transition-all duration-700"
+                  style={{ width: `${confidence}%` }}
+                />
+              </div>
+              <p className="mt-1.5 text-xs text-[var(--color-text-muted)]">Root cause analysis certainty</p>
+            </div>
+            <div className="rounded-lg border border-[var(--color-border)] p-4">
+              <p className="ui-section-label">Risk Level</p>
+              <div className="mt-2">
+                <span className={`ui-badge ${severity === 'critical' ? 'ui-badge-red' : severity === 'high' ? 'ui-badge-amber' : 'ui-badge-blue'}`}>
+                  {severity === 'critical' ? 'High' : severity === 'high' ? 'Medium' : 'Low'}
+                </span>
+              </div>
+              <p className="mt-2 text-xs text-[var(--color-text-secondary)]">
+                {severity === 'critical'
+                  ? 'Service is degraded or unavailable. Immediate action required.'
+                  : severity === 'high'
+                    ? 'Elevated impact. Review recommended before proceeding.'
+                    : 'Contained issue. Monitor and apply safe remediation.'}
+              </p>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div>
+            <p className="ui-section-label mb-3">Recommended Actions</p>
+            <div className="space-y-3">
+              <button type="button" className="ui-primary-btn h-11 w-full text-sm">
+                Apply Automated Fix
+              </button>
+              <div className="grid grid-cols-2 gap-3">
+                <button type="button" className="ui-ghost-btn h-10 border border-[var(--color-border)] text-sm">
+                  Restart Pod
+                </button>
+                <button type="button" className="ui-ghost-btn h-10 border border-[var(--color-border)] text-sm">
+                  Scale Deployment
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -549,20 +694,26 @@ function ClustersPage({
               <tr>
                 <td colSpan={4}>
                   <div className="ui-table-empty">
-                    <CircleDashed size={18} className="ui-table-empty-icon" />
-                    <span>No clusters connected yet.</span>
+                    <Server size={18} className="ui-table-empty-icon" />
+                    <span>No clusters connected yet. Add your first cluster to get started.</span>
                   </div>
                 </td>
               </tr>
             ) : (
               clusters.map((cluster, index) => (
                 <tr key={cluster.id} className={`ui-table-row ${index < clusters.length - 1 ? 'border-b border-[var(--color-border)]' : ''}`}>
-                  <td className="text-[var(--color-text-primary)]">
-                    {cluster.name}
-                    {cluster.id === selectedClusterId ? <span className="ml-2 rounded-md bg-[#F0FDF4] px-2 py-1 text-[11px] font-semibold text-emerald-700">Active</span> : null}
+                  <td>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-[var(--color-text-primary)]">{cluster.name}</span>
+                      {cluster.id === selectedClusterId ? <span className="ui-badge ui-badge-green">Active</span> : null}
+                    </div>
                   </td>
                   <td className="text-[var(--color-text-secondary)]">{cluster.cluster_type}</td>
-                  <td className="text-[var(--color-text-secondary)]">{cluster.status}</td>
+                  <td>
+                    <span className={`ui-badge ${cluster.status === 'active' || cluster.status === 'healthy' ? 'ui-badge-green' : cluster.status === 'error' || cluster.status === 'failed' ? 'ui-badge-red' : 'ui-badge-gray'}`}>
+                      {cluster.status}
+                    </span>
+                  </td>
                   <td className="text-[var(--color-text-secondary)]">{new Date(cluster.created_at).toLocaleDateString()}</td>
                 </tr>
               ))
@@ -571,6 +722,181 @@ function ClustersPage({
         </table>
       </div>
     </section>
+  );
+}
+
+function ServicesPage({
+  services,
+  incidents,
+  loading,
+}: {
+  services: ApiService[];
+  incidents: ApiIncident[];
+  loading: boolean;
+}) {
+  const incidentCountByService = useMemo(() => {
+    const map = new Map<number, number>();
+    incidents
+      .filter((inc) => inc.status !== 'resolved')
+      .forEach((inc) => map.set(inc.service_id, (map.get(inc.service_id) ?? 0) + 1));
+    return map;
+  }, [incidents]);
+
+  return (
+    <section>
+      <div className="ui-card overflow-x-auto">
+        <table className="ui-table min-w-[700px]">
+          <thead>
+            <tr>
+              <th>Service</th>
+              <th>Health</th>
+              <th>CPU</th>
+              <th>Memory</th>
+              <th>Active Incidents</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={5}>
+                  <div className="ui-table-empty">
+                    <CircleDashed size={18} className="ui-table-empty-icon animate-spin" />
+                    <span>Loading services...</span>
+                  </div>
+                </td>
+              </tr>
+            ) : services.length === 0 ? (
+              <tr>
+                <td colSpan={5}>
+                  <div className="ui-table-empty">
+                    <Activity size={18} className="ui-table-empty-icon" />
+                    <span>No services found. Connect a cluster to get started.</span>
+                  </div>
+                </td>
+              </tr>
+            ) : (
+              services.map((service, index) => {
+                const activeIncidentCount = incidentCountByService.get(service.id) ?? 0;
+                return (
+                  <tr key={service.id} className={`ui-table-row ${index < services.length - 1 ? 'border-b border-[var(--color-border)]' : ''}`}>
+                    <td>
+                      <p className="font-medium text-[var(--color-text-primary)]">{service.name}</p>
+                    </td>
+                    <td>
+                      <span className={`ui-badge ${service.is_active ? 'ui-badge-green' : 'ui-badge-gray'}`}>
+                        {service.is_active ? 'Healthy' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td className="tabular-nums text-[var(--color-text-secondary)]">{serviceCpu(service.id)}</td>
+                    <td className="tabular-nums text-[var(--color-text-secondary)]">{serviceMemory(service.id)}</td>
+                    <td>
+                      {activeIncidentCount > 0 ? (
+                        <span className="ui-badge ui-badge-red">{activeIncidentCount}</span>
+                      ) : (
+                        <span className="text-[var(--color-text-muted)]">—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+const actionTemplates = [
+  {
+    id: 1,
+    title: 'Restart failing pods',
+    description: 'Automatically restart pods in CrashLoopBackOff state across affected deployments. Clears transient errors and restores service availability without data loss.',
+    risk: 'low' as const,
+    impact: 'Minimal — brief pod restart cycle, no data loss.',
+    type: 'automated',
+  },
+  {
+    id: 2,
+    title: 'Scale deployment replicas',
+    description: 'Increase deployment replica count from 2 to 4 to handle elevated load and reduce per-pod resource pressure during traffic spikes.',
+    risk: 'low' as const,
+    impact: 'Moderate — increased resource usage, improves throughput.',
+    type: 'automated',
+  },
+  {
+    id: 3,
+    title: 'Rollback to previous image',
+    description: 'Revert the affected deployment to the last stable container image. Recommended when the current image introduced a breaking regression.',
+    risk: 'medium' as const,
+    impact: 'Service downtime ~30s during rollback, requires validation.',
+    type: 'manual',
+  },
+  {
+    id: 4,
+    title: 'Drain and evict node',
+    description: 'Gracefully drain the affected node and reschedule workloads onto healthy nodes. Use when persistent hardware or kernel-level issues are detected.',
+    risk: 'high' as const,
+    impact: 'High — workload migration required, may affect availability.',
+    type: 'manual',
+  },
+];
+
+function ActionsPage() {
+  const [confirmActionId, setConfirmActionId] = useState<number | null>(null);
+
+  return (
+    <div className="space-y-4">
+      {actionTemplates.map((action) => {
+        const riskBadge = action.risk === 'high' ? 'ui-badge-red' : action.risk === 'medium' ? 'ui-badge-amber' : 'ui-badge-green';
+        return (
+          <div key={action.id} className="ui-card p-5">
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div className="min-w-0 flex-1">
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <span className={`ui-badge ${riskBadge}`}>{action.risk} risk</span>
+                  <span className="ui-badge ui-badge-gray">{action.type}</span>
+                </div>
+                <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">{action.title}</h3>
+                <p className="mt-1 text-sm text-[var(--color-text-secondary)]">{action.description}</p>
+                <p className="mt-2 text-xs text-[var(--color-text-muted)]">Impact: {action.impact}</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <button type="button" className="ui-ghost-btn h-9 border border-[var(--color-border)] px-4 text-sm">
+                  Review
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmActionId(action.id)}
+                  className="ui-primary-btn h-9 px-4 text-sm"
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+
+      {confirmActionId !== null ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#111827]/30 px-4 backdrop-blur-sm">
+          <div className="ui-card w-full max-w-sm p-6">
+            <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Confirm action</h2>
+            <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
+              <span className="font-medium">{actionTemplates.find((a) => a.id === confirmActionId)?.title}</span>. This action will be executed immediately against the active cluster. Proceed?
+            </p>
+            <div className="mt-5 flex justify-end gap-3">
+              <button type="button" onClick={() => setConfirmActionId(null)} className="ui-ghost-btn border border-[var(--color-border)]">
+                Cancel
+              </button>
+              <button type="button" onClick={() => setConfirmActionId(null)} className="ui-primary-btn">
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -638,37 +964,92 @@ function AddClusterPage({
 }
 
 function ChatPage({ incidents, actions }: { incidents: ApiIncident[]; actions: ApiAction[] }) {
-  const recentMessages = [
-    `Summarize unresolved incidents across ${incidents.filter((incident) => incident.status !== 'resolved').length} active alerts.`,
-    `Recommend the next remediation using ${actions.length} historical actions.`,
-    'Show the safest rollout plan for the current workspace.',
+  const [inputValue, setInputValue] = useState('');
+  const openIncidentCount = incidents.filter((inc) => inc.status !== 'resolved').length;
+
+  const chatPrompts = [
+    `Summarize ${openIncidentCount} active incident${openIncidentCount !== 1 ? 's' : ''} and recommend the safest next action`,
+    'What services are most at risk in the current cluster?',
+    'Generate a rollout plan that minimizes downtime',
+    'What caused the last three incident spikes?',
+    'Show a post-incident report for the current workspace',
   ];
 
   return (
-    <section>
-      <div className="grid gap-6 lg:grid-cols-[1.1fr,0.9fr]">
-        <div className="ui-card p-6">
-          <div className="rounded-md border border-[var(--color-border)] bg-[#F9FAFB] px-4 py-4">
-            <p className="text-sm text-[var(--color-text-secondary)]">Ask anything about incidents, clusters, or remediation plans.</p>
-          </div>
-          <textarea rows={8} placeholder="Summarize the highest-risk incident and propose the safest next action..." className="ui-input mt-4 h-auto w-full py-3" />
-          <div className="mt-4 flex justify-end">
-            <button type="button" className="ui-primary-btn">Send</button>
+    <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
+      {/* Main chat area */}
+      <div className="ui-card flex flex-col" style={{ height: '70vh', minHeight: '480px' }}>
+        <div className="flex-1 overflow-y-auto px-5 py-6">
+          <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#F0FDF4]">
+              <Sparkles size={22} className="text-[var(--color-primary)]" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-[var(--color-text-primary)]">AI Ops Copilot</p>
+              <p className="mt-1 max-w-xs text-sm text-[var(--color-text-muted)]">
+                Ask about incidents, root causes, remediation plans, or rollout strategies.
+              </p>
+            </div>
+            <div className="mt-4 rounded-md border border-[var(--color-border)] bg-[#F9FAFB] px-4 py-3 text-left text-sm text-[var(--color-text-secondary)]">
+              Responses include: <span className="font-medium text-[var(--color-text-primary)]">issue summary, root cause, risk assessment,</span> and <span className="font-medium text-[var(--color-text-primary)]">suggested actions.</span>
+            </div>
           </div>
         </div>
 
-        <div className="ui-card p-6">
-          <p className="text-xs uppercase tracking-[0.16em] text-[var(--color-text-muted)]">Suggested prompts</p>
-          <div className="mt-4 space-y-3">
-            {recentMessages.map((message) => (
-              <button key={message} type="button" className="ui-table-row block w-full rounded-md border border-[var(--color-border)] px-4 py-3 text-left text-sm text-[var(--color-text-primary)]">
-                {message}
+        <div className="border-t border-[var(--color-border)] px-4 py-4">
+          <div className="flex gap-3">
+            <input
+              value={inputValue}
+              onChange={(event) => setInputValue(event.target.value)}
+              onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); } }}
+              placeholder="Ask about incidents, clusters, or remediation plans..."
+              className="ui-input flex-1"
+            />
+            <button type="button" className="ui-primary-btn px-4">
+              <Send size={16} />
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-[var(--color-text-muted)]">
+            AutonOps AI uses live cluster context to generate safe, actionable guidance.
+          </p>
+        </div>
+      </div>
+
+      {/* Right sidebar */}
+      <div className="space-y-4">
+        <div className="ui-card p-4">
+          <p className="ui-section-label">Live Context</p>
+          <div className="mt-3 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-[var(--color-text-secondary)]">Active incidents</span>
+              <span className={`ui-badge ${openIncidentCount > 0 ? 'ui-badge-red' : 'ui-badge-green'}`}>
+                {openIncidentCount}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-[var(--color-text-secondary)]">Actions logged</span>
+              <span className="text-sm font-medium text-[var(--color-text-primary)]">{actions.length}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="ui-card p-4">
+          <p className="ui-section-label">Suggested Prompts</p>
+          <div className="mt-3 space-y-2">
+            {chatPrompts.map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                onClick={() => setInputValue(prompt)}
+                className="w-full rounded-md border border-[var(--color-border)] px-3 py-2.5 text-left text-xs text-[var(--color-text-secondary)] transition duration-100 hover:bg-[#F9FAFB] hover:text-[var(--color-text-primary)]"
+              >
+                {prompt}
               </button>
             ))}
           </div>
         </div>
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -738,8 +1119,22 @@ function Dashboard({
       );
     }
 
+    if (activeSection === 'Services') {
+      return (
+        <ServicesPage
+          services={platformData.services}
+          incidents={platformData.incidents}
+          loading={platformData.loading}
+        />
+      );
+    }
+
     if (activeSection === 'Clusters') {
       return <ClustersPage clusters={clusters} selectedClusterId={selectedClusterId} />;
+    }
+
+    if (activeSection === 'Actions') {
+      return <ActionsPage />;
     }
 
     if (activeSection === 'Workspace') {
