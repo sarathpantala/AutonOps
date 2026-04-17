@@ -1,0 +1,163 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+  --color-bg: #f9fafb;
+  --color-surface: #ffffff;
+  --color-surface-elevated: #f3f4f6;
+  --color-text-primary: #111827;
+  --color-text-secondary: #374151;
+  --color-text-muted: #6b7280;
+  --color-text-light: #9ca3af;
+  --color-border: #e5e7eb;
+  --color-primary: #22c55e;
+  --color-primary-strong: #16a34a;
+  background-color: var(--color-bg);
+}
+
+html.dark {
+  color-scheme: dark;
+  --color-bg: #0b1220;
+  --color-surface: #111827;
+  --color-surface-elevated: #1f2937;
+  --color-text-primary: #e5e7eb;
+  --color-text-secondary: #cbd5e1;
+  --color-text-muted: #94a3b8;
+  --color-text-light: #64748b;
+  --color-border: #334155;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  min-height: 100%;
+  margin: 0;
+  background-color: var(--color-bg);
+  background-image: linear-gradient(rgba(229, 231, 235, 0.75) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(229, 231, 235, 0.75) 1px, transparent 1px);
+  background-size: 24px 24px;
+  color: var(--color-text-primary);
+}
+
+html.dark body {
+  background-image: linear-gradient(rgba(51, 65, 85, 0.5) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(51, 65, 85, 0.5) 1px, transparent 1px);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: rgba(34, 197, 94, 0.2);
+}
+
+@layer base {
+  body {
+    @apply antialiased;
+  }
+}
+
+@layer components {
+  .ui-card {
+    @apply rounded-lg border;
+    background-color: var(--color-surface);
+    border-color: var(--color-border);
+    box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04);
+  }
+
+  .ui-input {
+    @apply h-10 rounded-md border px-3 text-sm outline-none transition duration-150 ease-out;
+    background-color: var(--color-surface);
+    border-color: var(--color-border);
+    color: var(--color-text-primary);
+  }
+
+  .ui-input:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.14);
+  }
+
+  .ui-primary-btn {
+    @apply inline-flex h-10 items-center justify-center rounded-md px-4 text-sm font-medium text-white transition duration-150 ease-out hover:scale-[1.02] active:scale-[0.98];
+    background-color: var(--color-primary);
+  }
+
+  .ui-primary-btn:hover {
+    background-color: var(--color-primary-strong);
+  }
+
+  .ui-secondary-btn {
+    @apply inline-flex h-10 items-center justify-center rounded-md px-4 text-sm font-medium text-white transition duration-150 ease-out hover:scale-[1.02] active:scale-[0.98];
+    background-color: #111827;
+  }
+
+  .ui-secondary-btn:hover {
+    background-color: #1f2937;
+  }
+
+  .ui-ghost-btn {
+    @apply inline-flex h-10 items-center justify-center rounded-md px-4 text-sm font-medium transition duration-150 ease-out hover:scale-[1.02] active:scale-[0.98];
+    color: var(--color-text-primary);
+  }
+
+  .ui-ghost-btn:hover {
+    background-color: var(--color-surface-elevated);
+  }
+
+  .ui-table-row {
+    @apply cursor-pointer transition duration-150 ease-out hover:bg-[#F9FAFB];
+  }
+
+  .ui-table {
+    @apply w-full text-left text-sm;
+  }
+
+  .ui-table thead {
+    background-color: var(--color-bg);
+  }
+
+  .ui-table th {
+    @apply px-4 py-3 text-sm font-bold;
+    color: #111827;
+  }
+
+  .ui-table td {
+    @apply px-4 py-3;
+  }
+
+  .ui-table-empty {
+    @apply flex flex-col items-center justify-center gap-2 py-6 text-center;
+    color: var(--color-text-secondary);
+  }
+
+  .ui-table-empty-icon {
+    @apply text-base;
+    color: var(--color-text-muted);
+  }
+
+  .ui-nav-item {
+    @apply flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition duration-150 ease-out;
+    color: var(--color-text-secondary);
+  }
+
+  .ui-nav-item:hover {
+    background-color: var(--color-surface-elevated);
+    color: var(--color-text-primary);
+  }
+
+  .ui-nav-item-active {
+    background-color: #e5e7eb;
+    color: var(--color-text-primary);
+    font-weight: 600;
+  }
+}

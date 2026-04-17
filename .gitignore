@@ -1,0 +1,15 @@
+# Node dependencies and build outputs
+**/node_modules/
+frontend/dist/
+
+# Python caches
+**/__pycache__/
+**/.pytest_cache/
+
+# OS/editor noise
+.DS_Store
+.vscode/
+
+**/.env.*
+**/.venv/
+**/venv/

@@ -1,0 +1,47 @@
+services:
+  db:
+    image: postgres:15
+    container_name: autonops-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: autonops
+    ports:
+      - "5432:5432"
+    volumes:
+      - autonops-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d autonops"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: ${BACKEND_BUILD_TARGET:-dev}
+    container_name: autonops-backend
+    restart: unless-stopped
+    env_file:
+      - ${BACKEND_ENV_FILE:-./backend/.env.local}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    command: ["/start.sh"]
+    volumes:
+      - ./backend:/app
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      POSTGRES_USER: user
+      POSTGRES_DB: autonops
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
+      UVICORN_RELOAD: ${UVICORN_RELOAD:-true}
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-1}
+
+volumes:
+  autonops-db-data:
