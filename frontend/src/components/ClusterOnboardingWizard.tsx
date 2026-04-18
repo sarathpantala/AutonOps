@@ -27,11 +27,38 @@ type Props = {
   onClusterCreated: (cluster: ClusterRecord) => void;
 };
 
-const options: Array<{ value: ClusterType; label: string; helper: string }> = [
-  { value: 'eks', label: 'EKS', helper: 'Amazon Elastic Kubernetes Service' },
-  { value: 'gke', label: 'GKE', helper: 'Google Kubernetes Engine' },
-  { value: 'openshift', label: 'OpenShift', helper: 'Red Hat OpenShift' },
-  { value: 'kind', label: 'Kind', helper: 'Kubernetes in Docker (local)' },
+const EksIcon = () => (
+  <svg viewBox="0 0 24 24" className="h-6 w-6" aria-hidden="true">
+    <path fill="#FF9900" d="M12 2L2 7l10 5 8-4v6h2V7L12 2z" />
+  </svg>
+);
+
+const GkeIcon = () => (
+  <svg viewBox="0 0 24 24" className="h-6 w-6" aria-hidden="true">
+    <path fill="#4285F4" d="M12 2l8 4v8l-8 4-8-4V6z" />
+    <circle cx="12" cy="12" r="3" fill="#34A853" />
+  </svg>
+);
+
+const OpenShiftIcon = () => (
+  <svg viewBox="0 0 24 24" className="h-6 w-6" aria-hidden="true">
+    <path fill="#EE0000" d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 5a4 4 0 110 8h-2a4 4 0 010-8h2z" />
+  </svg>
+);
+
+const KindIcon = () => (
+  <svg viewBox="0 0 24 24" className="h-6 w-6" aria-hidden="true">
+    <rect x="3" y="6" width="18" height="12" rx="2" fill="#3B82F6" />
+    <rect x="6" y="9" width="4" height="4" fill="white" />
+    <rect x="14" y="9" width="4" height="4" fill="white" />
+  </svg>
+);
+
+const options: Array<{ value: ClusterType; label: string; helper: string; icon: () => JSX.Element }> = [
+  { value: 'eks', label: 'EKS', helper: 'Amazon Elastic Kubernetes Service', icon: EksIcon },
+  { value: 'gke', label: 'GKE', helper: 'Google Kubernetes Engine', icon: GkeIcon },
+  { value: 'openshift', label: 'OpenShift', helper: 'Red Hat OpenShift', icon: OpenShiftIcon },
+  { value: 'kind', label: 'Kind', helper: 'Kubernetes in Docker', icon: KindIcon },
 ];
 
 function toErrorMessage(detail: unknown, fallback: string): string {
@@ -230,9 +257,10 @@ export default function ClusterOnboardingWizard({ workspaces, selectedWorkspaceI
 
           <div>
             <label className="mb-2 block text-xs uppercase tracking-[0.16em] text-[var(--color-text-muted)]">Cluster type</label>
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
               {options.map((option) => {
                 const active = option.value === clusterType;
+                const Icon = option.icon;
                 return (
                   <motion.button
                     key={option.value}
@@ -241,10 +269,17 @@ export default function ClusterOnboardingWizard({ workspaces, selectedWorkspaceI
                     whileTap={{ scale: 0.98 }}
                     transition={{ duration: 0.15, ease: 'easeOut' }}
                     onClick={() => setClusterType(option.value)}
-                    className={`rounded-md border px-4 py-4 text-left transition duration-150 ease-out ${active ? 'border-[#22C55E] bg-[#F0FDF4]' : 'border-[var(--color-border)] bg-white hover:bg-[#F9FAFB]'}`}
+                    className={`rounded-lg border px-3 py-3 text-left transition duration-150 ease-out ${active ? 'border-[#22C55E] bg-[#F0FDF4] shadow-sm' : 'border-[var(--color-border)] bg-white hover:bg-[#F9FAFB]'}`}
                   >
-                    <div className="text-sm font-medium text-[var(--color-text-primary)]">{option.label}</div>
-                    <div className="mt-1 text-xs text-[var(--color-text-secondary)]">{option.helper}</div>
+                    <div className="flex items-center gap-3">
+                      <div className={`flex h-10 w-10 items-center justify-center rounded-lg border ${active ? 'border-[#22C55E] bg-[#DCFCE7]' : 'border-gray-200 bg-gray-50'}`}>
+                        <Icon />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-[var(--color-text-primary)]">{option.label}</div>
+                        <div className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-[var(--color-text-secondary)]">{option.helper}</div>
+                      </div>
+                    </div>
                   </motion.button>
                 );
               })}

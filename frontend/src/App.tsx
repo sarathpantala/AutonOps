@@ -886,6 +886,12 @@ function ChatPage({
   const [streamStatusText, setStreamStatusText] = useState('');
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [actionStates, setActionStates] = useState<Record<string, 'idle' | 'running' | 'done' | 'error'>>({});
+  const [approvalAction, setApprovalAction] = useState<{
+    actionId: number;
+    label: string;
+    command: string;
+    diagnostic: boolean;
+  } | null>(null);
   // Auto-analysis
   const [autoResult, setAutoResult] = useState<AIResult | null>(null);
   const [autoIssueCount, setAutoIssueCount] = useState(0);
@@ -896,6 +902,14 @@ function ChatPage({
 
   const openIncidentCount = incidents.filter((inc) => inc.status !== 'resolved').length;
   const selectedCluster = clusters.find((c) => c.id === selectedClusterId);
+
+  const isDiagnosticAction = (action: ActionItem) => {
+    const combined = `${action.action} ${action.command}`.toLowerCase();
+    if (/^\s*kubectl\s+(logs|describe|get|top)\b/.test(action.command.toLowerCase())) {
+      return true;
+    }
+    return /(inspect|describe|log|logs|diagnos|debug|check|triage|observe)/.test(combined);
+  };
 
   // ── Auto-scroll ──────────────────────────────────────────────────
   useEffect(() => {
@@ -1021,8 +1035,7 @@ function ChatPage({
   };
 
   // ── Action execution ─────────────────────────────────────────────
-  const runAction = async (actionId: number | undefined, actionLabel: string) => {
-    if (!actionId) return;
+  const executeApprovedAction = async (actionId: number, actionLabel: string, diagnostic: boolean) => {
     const key = String(actionId);
     setActionStates((prev) => ({ ...prev, [key]: 'running' }));
     try {
@@ -1043,8 +1056,8 @@ function ChatPage({
         {
           role: 'assistant',
           text: execData.execution_result
-            ? `✓ Executed: ${actionLabel}\n${execData.execution_result}`
-            : `✓ Executed: ${actionLabel}`,
+            ? `${diagnostic ? 'Diagnostic completed' : 'Fix applied'}: ${actionLabel}\n${execData.execution_result}`
+            : `${diagnostic ? 'Diagnostic completed' : 'Fix applied'}: ${actionLabel}`,
         },
       ]);
       // Update action status in latestResult
@@ -1058,9 +1071,22 @@ function ChatPage({
       setActionStates((prev) => ({ ...prev, [key]: 'error' }));
       setConversation((prev) => [
         ...prev,
-        { role: 'assistant', text: `Failed: ${err instanceof Error ? err.message : 'Unknown error'}` },
+        {
+          role: 'assistant',
+          text: `Failed to execute ${diagnostic ? 'diagnostic action' : 'fix'}: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        },
       ]);
     }
+  };
+
+  const requestActionExecution = (action: ActionItem) => {
+    if (!action.action_id) return;
+    setApprovalAction({
+      actionId: action.action_id,
+      label: action.action,
+      command: action.command,
+      diagnostic: isDiagnosticAction(action),
+    });
   };
 
   const rejectActionItem = async (actionId: number | undefined) => {
@@ -1338,6 +1364,7 @@ function ChatPage({
                       const isDone = act.status === 'done' || state === 'done';
                       const isRejected = act.status === 'rejected';
                       const isRunning = state === 'running';
+                      const diagnostic = isDiagnosticAction(act);
                       return (
                         <div
                           key={i}
@@ -1345,9 +1372,14 @@ function ChatPage({
                         >
                           <div className="flex items-start justify-between gap-2">
                             <p className="text-xs font-semibold text-[var(--color-text-primary)]">{act.action}</p>
-                            <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${riskColor(act.risk)}`}>
-                              {act.risk}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="shrink-0 rounded-full border border-[var(--color-border)] bg-white px-2 py-0.5 text-[10px] font-semibold uppercase text-[var(--color-text-muted)]">
+                                {diagnostic ? 'diagnostic' : 'remediation'}
+                              </span>
+                              <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${riskColor(act.risk)}`}>
+                                {act.risk}
+                              </span>
+                            </div>
                           </div>
                           <div className="mt-1.5 flex items-center gap-1.5 rounded-md bg-gray-100 px-2 py-1.5">
                             <Terminal size={10} className="shrink-0 text-gray-400" />
@@ -1355,7 +1387,7 @@ function ChatPage({
                           </div>
                           <div className="mt-2 flex items-center gap-2">
                             {isDone ? (
-                              <span className="text-[11px] font-medium text-emerald-600">✓ Executed</span>
+                              <span className="text-[11px] font-medium text-emerald-600">{diagnostic ? 'Executed' : 'Applied'}</span>
                             ) : isRejected ? (
                               <span className="text-[11px] text-[var(--color-text-muted)]">Rejected</span>
                             ) : (
@@ -1363,10 +1395,10 @@ function ChatPage({
                                 <button
                                   type="button"
                                   disabled={isRunning || !act.action_id}
-                                  onClick={() => void runAction(act.action_id, act.action)}
+                                  onClick={() => requestActionExecution(act)}
                                   className={`rounded-md px-3 py-1 text-[11px] font-semibold text-white transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 ${riskBtnColor(act.risk)}`}
                                 >
-                                  {isRunning ? 'Running…' : act.requires_approval ? 'Approve & Run' : 'Run'}
+                                  {isRunning ? (diagnostic ? 'Running…' : 'Applying…') : (diagnostic ? 'Run diagnostic' : 'Apply fix')}
                                 </button>
                                 <button
                                   type="button"
@@ -1378,7 +1410,7 @@ function ChatPage({
                                 </button>
                               </>
                             )}
-                            {act.requires_approval && !isDone && !isRejected && (
+                            {act.requires_approval && !isDone && !isRejected && !diagnostic && (
                               <span className="flex items-center gap-1 text-[10px] text-amber-600">
                                 <Shield size={10} /> Approval required
                               </span>
@@ -1424,6 +1456,46 @@ function ChatPage({
           </div>
         </div>
       </div>
+
+      {approvalAction ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#111827]/35 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-xl border border-[var(--color-border)] bg-white p-5 shadow-2xl">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">Approval required</p>
+            <h3 className="mt-2 text-lg font-semibold text-[var(--color-text-primary)]">
+              {approvalAction.diagnostic ? 'Run diagnostic command?' : 'Apply remediation command?'}
+            </h3>
+            <p className="mt-2 text-sm text-[var(--color-text-secondary)]">{approvalAction.label}</p>
+            <div className="mt-4 rounded-lg border border-[var(--color-border)] bg-[#F8FAFC] p-3">
+              <code className="block overflow-x-auto text-[11px] text-[var(--color-text-secondary)] break-all font-mono">{approvalAction.command}</code>
+            </div>
+            <p className="mt-3 text-xs text-[var(--color-text-muted)]">
+              {approvalAction.diagnostic
+                ? 'This action is diagnostic only and is intended to inspect logs or resource state without changing the cluster.'
+                : 'This action may modify cluster state. Review the command carefully before approval.'}
+            </p>
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setApprovalAction(null)}
+                className="ui-ghost-btn h-9 border border-[var(--color-border)] px-4 text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const pending = approvalAction;
+                  setApprovalAction(null);
+                  void executeApprovedAction(pending.actionId, pending.label, pending.diagnostic);
+                }}
+                className="ui-primary-btn h-9 px-4 text-xs"
+              >
+                {approvalAction.diagnostic ? 'Approve & run diagnostic' : 'Approve & apply fix'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
