@@ -51,8 +51,9 @@ type ApiIncident = {
 
 type ApiAction = {
   id: number;
-  incident_id: number;
+  incident_id?: number | null;
   description: string;
+  status?: string;
   executed_at: string;
   type: 'manual' | 'automated';
 };
@@ -137,35 +138,24 @@ function usePlatformData(selectedClusterId: number | null, selectedWorkspaceId: 
       setLoading(true);
       setError('');
 
+      if (!selectedWorkspaceId || !selectedClusterId) {
+        setServices([]);
+        setIncidents([]);
+        setActions([]);
+        setLoading(false);
+        return;
+      }
+
       try {
-        let servicesData: ApiService[] = [];
-        let incidentsData: ApiIncident[] = [];
-
-        if (selectedClusterId) {
-          const runtimeResponse = await fetch(`${API_BASE_URL}/clusters/${selectedClusterId}/runtime-summary`, {
-            headers: getAuthenticatedHeaders(),
-          });
-          if (!runtimeResponse.ok) {
-            throw new Error('Failed to load cluster runtime data');
-          }
-          const runtimeData = await runtimeResponse.json() as { services: ApiService[]; incidents: ApiIncident[] };
-          servicesData = runtimeData.services ?? [];
-          incidentsData = runtimeData.incidents ?? [];
-        } else {
-          const [servicesResponse, incidentsResponse] = await Promise.all([
-            fetch(`${API_BASE_URL}/services/`),
-            fetch(`${API_BASE_URL}/incidents/`),
-          ]);
-
-          if (!servicesResponse.ok || !incidentsResponse.ok) {
-            throw new Error('Failed to load platform data');
-          }
-
-          [servicesData, incidentsData] = await Promise.all([
-            servicesResponse.json() as Promise<ApiService[]>,
-            incidentsResponse.json() as Promise<ApiIncident[]>,
-          ]);
+        const runtimeResponse = await fetch(`${API_BASE_URL}/clusters/${selectedClusterId}/runtime-summary`, {
+          headers: getAuthenticatedHeaders(),
+        });
+        if (!runtimeResponse.ok) {
+          throw new Error('Failed to load cluster runtime data');
         }
+        const runtimeData = await runtimeResponse.json() as { services: ApiService[]; incidents: ApiIncident[] };
+        const servicesData = runtimeData.services ?? [];
+        const incidentsData = runtimeData.incidents ?? [];
 
         const actionsUrl = selectedClusterId
           ? `${API_BASE_URL}/actions/?cluster_id=${selectedClusterId}`
@@ -207,32 +197,6 @@ function incidentSeverity(incident: ApiIncident) {
     return 'high';
   }
   return 'medium';
-}
-
-function incidentRootCause(incident: ApiIncident) {
-  const title = incident.title.toLowerCase();
-  if (title.includes('memory')) {
-    return 'Memory leak introduced during latest release causing pod eviction and repeated restarts.';
-  }
-  if (title.includes('latency') || title.includes('timeout')) {
-    return 'Dependency latency spike is saturating worker pools and degrading request handling.';
-  }
-  if (title.includes('cpu')) {
-    return 'CPU saturation under peak traffic due to under-provisioned deployment replicas.';
-  }
-  return 'Configuration drift between deployment and runtime policy triggered service instability.';
-}
-
-function confidenceForIncident(incidentId: number) {
-  return 78 + (incidentId % 18);
-}
-
-function serviceCpu(serviceId: number) {
-  return `${42 + (serviceId * 13) % 38}%`;
-}
-
-function serviceMemory(serviceId: number) {
-  return `${49 + (serviceId * 11) % 34}%`;
 }
 
 function CreateWorkspaceModal({
@@ -365,18 +329,22 @@ function StatCard({
 function OverviewPage({
   services,
   incidents,
+  actions,
   loading,
   error,
   onFix,
 }: {
   services: ApiService[];
   incidents: ApiIncident[];
+  actions: ApiAction[];
   loading: boolean;
   error: string;
   onFix: (incidentId: number) => void;
 }) {
   const openIncidents = incidents.filter((incident) => incident.status !== 'resolved').slice(0, 8);
   const healthyServices = services.filter((s) => s.is_active).length;
+  const actionCount = actions.length;
+  const impactedServiceCount = new Set(openIncidents.map((incident) => incident.service_id)).size;
   const serviceNameById = useMemo(() => {
     const map = new Map<number, string>();
     services.forEach((service) => map.set(service.id, service.name));
@@ -404,15 +372,15 @@ function OverviewPage({
           accent={healthyServices === services.length && services.length > 0 ? 'bg-emerald-500' : undefined}
         />
         <StatCard
-          label="Avg Confidence"
-          value="87%"
-          sub="Root cause accuracy"
+          label="Impacted Services"
+          value={loading ? '—' : impactedServiceCount}
+          sub="Services with open incidents"
           icon={TrendingUp}
         />
         <StatCard
-          label="Open Actions"
-          value="4"
-          sub="Pending remediation"
+          label="Recorded Actions"
+          value={loading ? '—' : actionCount}
+          sub="Actions persisted for this cluster"
           icon={Zap}
         />
       </div>
@@ -522,8 +490,8 @@ function OverviewPage({
                         {service.is_active ? 'Healthy' : 'Inactive'}
                       </span>
                     </td>
-                    <td className="tabular-nums text-[var(--color-text-secondary)]">{serviceCpu(service.id)}</td>
-                    <td className="tabular-nums text-[var(--color-text-secondary)]">{serviceMemory(service.id)}</td>
+                    <td className="tabular-nums text-[var(--color-text-secondary)]">N/A</td>
+                    <td className="tabular-nums text-[var(--color-text-secondary)]">N/A</td>
                   </tr>
                 ))
               )}
@@ -540,16 +508,14 @@ function IncidentsPage({
   services,
   selectedIncidentId,
   onSelectIncident,
-  onCreateAction,
+  onOpenChat,
 }: {
   incidents: ApiIncident[];
   services: ApiService[];
   selectedIncidentId: number | null;
   onSelectIncident: (incidentId: number) => void;
-  onCreateAction: (payload: { incidentId: number; description: string; type: 'manual' | 'automated' }) => Promise<void>;
+  onOpenChat: () => void;
 }) {
-  const [submittingAction, setSubmittingAction] = useState<string | null>(null);
-  const [actionFeedback, setActionFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const openIncidents = incidents.filter((incident) => incident.status !== 'resolved');
   const selectedIncident = openIncidents.find((incident) => incident.id === selectedIncidentId) ?? openIncidents[0] ?? null;
   const serviceName = selectedIncident
@@ -565,23 +531,7 @@ function IncidentsPage({
       </div>
     );
   }
-
   const severity = incidentSeverity(selectedIncident);
-  const confidence = confidenceForIncident(selectedIncident.id);
-
-  const handleCreateAction = async (description: string, type: 'manual' | 'automated') => {
-    setSubmittingAction(description);
-    setActionFeedback(null);
-    try {
-      await onCreateAction({ incidentId: selectedIncident.id, description, type });
-      setActionFeedback({ type: 'success', message: 'Action created successfully.' });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to create action.';
-      setActionFeedback({ type: 'error', message });
-    } finally {
-      setSubmittingAction(null);
-    }
-  };
 
   return (
     <div className="flex gap-6">
@@ -640,23 +590,15 @@ function IncidentsPage({
           <div>
             <p className="ui-section-label mb-2">Root Cause</p>
             <div className="rounded-md border border-[var(--color-border)] bg-[#F9FAFB] px-4 py-3 text-sm leading-6 text-[var(--color-text-primary)]">
-              {incidentRootCause(selectedIncident)}
+              {selectedIncident.title}
+              <p className="mt-2 text-xs text-[var(--color-text-muted)]">
+                No verified root-cause explanation is available from current runtime data. Use Chat for cluster-aware analysis before applying remediation.
+              </p>
             </div>
           </div>
 
-          {/* Confidence + Risk */}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="rounded-lg border border-[var(--color-border)] p-4">
-              <p className="ui-section-label">Confidence Score</p>
-              <p className="mt-2 text-3xl font-bold text-[var(--color-text-primary)]">{confidence}%</p>
-              <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-[#E5E7EB]">
-                <div
-                  className="h-full rounded-full bg-[var(--color-primary)] transition-all duration-700"
-                  style={{ width: `${confidence}%` }}
-                />
-              </div>
-              <p className="mt-1.5 text-xs text-[var(--color-text-muted)]">Root cause analysis certainty</p>
-            </div>
+          {/* Risk */}
+          <div className="grid gap-4 sm:grid-cols-1">
             <div className="rounded-lg border border-[var(--color-border)] p-4">
               <p className="ui-section-label">Risk Level</p>
               <div className="mt-2">
@@ -676,43 +618,21 @@ function IncidentsPage({
 
           {/* Actions */}
           <div>
-            <p className="ui-section-label mb-3">Recommended Actions</p>
-            <div className="space-y-3">
-              <button
-                type="button"
-                onClick={() => void handleCreateAction('Apply automated remediation workflow', 'automated')}
-                disabled={submittingAction !== null}
-                className="ui-primary-btn h-11 w-full text-sm disabled:opacity-60"
-              >
-                {submittingAction === 'Apply automated remediation workflow' ? 'Applying...' : 'Apply Automated Fix'}
-              </button>
-              <div className="grid grid-cols-2 gap-3">
+            <p className="ui-section-label mb-3">Next Step</p>
+            <div className="rounded-md border border-[var(--color-border)] bg-[#F9FAFB] p-4">
+              <p className="text-sm text-[var(--color-text-primary)]">No static remediation actions are shown here.</p>
+              <p className="mt-2 text-xs leading-5 text-[var(--color-text-muted)]">
+                Generate cluster-aware recommendations from live cluster context in Chat, then review risk and approve execution there.
+              </p>
+              <div className="mt-4">
                 <button
                   type="button"
-                  onClick={() => void handleCreateAction('Restart pod for impacted deployment', 'manual')}
-                  disabled={submittingAction !== null}
-                  className="ui-ghost-btn h-10 border border-[var(--color-border)] text-sm disabled:opacity-60"
+                  onClick={onOpenChat}
+                  className="ui-primary-btn h-10 px-4 text-sm"
                 >
-                  {submittingAction === 'Restart pod for impacted deployment' ? 'Running...' : 'Restart Pod'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleCreateAction('Scale deployment replicas to reduce load', 'manual')}
-                  disabled={submittingAction !== null}
-                  className="ui-ghost-btn h-10 border border-[var(--color-border)] text-sm disabled:opacity-60"
-                >
-                  {submittingAction === 'Scale deployment replicas to reduce load' ? 'Running...' : 'Scale Deployment'}
+                  Open Chat Analysis
                 </button>
               </div>
-              {actionFeedback && (
-                <p
-                  className={`text-xs ${
-                    actionFeedback.type === 'success' ? 'text-emerald-700' : 'text-red-600'
-                  }`}
-                >
-                  {actionFeedback.message}
-                </p>
-              )}
             </div>
           </div>
         </div>
@@ -838,8 +758,8 @@ function ServicesPage({
                         {service.is_active ? 'Healthy' : 'Inactive'}
                       </span>
                     </td>
-                    <td className="tabular-nums text-[var(--color-text-secondary)]">{serviceCpu(service.id)}</td>
-                    <td className="tabular-nums text-[var(--color-text-secondary)]">{serviceMemory(service.id)}</td>
+                    <td className="tabular-nums text-[var(--color-text-secondary)]">N/A</td>
+                    <td className="tabular-nums text-[var(--color-text-secondary)]">N/A</td>
                     <td>
                       {activeIncidentCount > 0 ? (
                         <span className="ui-badge ui-badge-red">{activeIncidentCount}</span>
@@ -858,99 +778,6 @@ function ServicesPage({
   );
 }
 
-const actionTemplates = [
-  {
-    id: 1,
-    title: 'Restart failing pods',
-    description: 'Automatically restart pods in CrashLoopBackOff state across affected deployments. Clears transient errors and restores service availability without data loss.',
-    risk: 'low' as const,
-    impact: 'Minimal — brief pod restart cycle, no data loss.',
-    type: 'automated',
-  },
-  {
-    id: 2,
-    title: 'Scale deployment replicas',
-    description: 'Increase deployment replica count from 2 to 4 to handle elevated load and reduce per-pod resource pressure during traffic spikes.',
-    risk: 'low' as const,
-    impact: 'Moderate — increased resource usage, improves throughput.',
-    type: 'automated',
-  },
-  {
-    id: 3,
-    title: 'Rollback to previous image',
-    description: 'Revert the affected deployment to the last stable container image. Recommended when the current image introduced a breaking regression.',
-    risk: 'medium' as const,
-    impact: 'Service downtime ~30s during rollback, requires validation.',
-    type: 'manual',
-  },
-  {
-    id: 4,
-    title: 'Drain and evict node',
-    description: 'Gracefully drain the affected node and reschedule workloads onto healthy nodes. Use when persistent hardware or kernel-level issues are detected.',
-    risk: 'high' as const,
-    impact: 'High — workload migration required, may affect availability.',
-    type: 'manual',
-  },
-];
-
-function ActionsPage() {
-  const [confirmActionId, setConfirmActionId] = useState<number | null>(null);
-
-  return (
-    <div className="space-y-4">
-      {actionTemplates.map((action) => {
-        const riskBadge = action.risk === 'high' ? 'ui-badge-red' : action.risk === 'medium' ? 'ui-badge-amber' : 'ui-badge-green';
-        return (
-          <div key={action.id} className="ui-card p-5">
-            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-              <div className="min-w-0 flex-1">
-                <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <span className={`ui-badge ${riskBadge}`}>{action.risk} risk</span>
-                  <span className="ui-badge ui-badge-gray">{action.type}</span>
-                </div>
-                <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">{action.title}</h3>
-                <p className="mt-1 text-sm text-[var(--color-text-secondary)]">{action.description}</p>
-                <p className="mt-2 text-xs text-[var(--color-text-muted)]">Impact: {action.impact}</p>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <button type="button" className="ui-ghost-btn h-9 border border-[var(--color-border)] px-4 text-sm">
-                  Review
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmActionId(action.id)}
-                  className="ui-primary-btn h-9 px-4 text-sm"
-                >
-                  Apply
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })}
-
-      {confirmActionId !== null ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#111827]/30 px-4 backdrop-blur-sm">
-          <div className="ui-card w-full max-w-sm p-6">
-            <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Confirm action</h2>
-            <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
-              <span className="font-medium">{actionTemplates.find((a) => a.id === confirmActionId)?.title}</span>. This action will be executed immediately against the active cluster. Proceed?
-            </p>
-            <div className="mt-5 flex justify-end gap-3">
-              <button type="button" onClick={() => setConfirmActionId(null)} className="ui-ghost-btn border border-[var(--color-border)]">
-                Cancel
-              </button>
-              <button type="button" onClick={() => setConfirmActionId(null)} className="ui-primary-btn">
-                Confirm
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function WorkspacePage({
   workspaces,
   selectedWorkspaceId,
@@ -966,7 +793,7 @@ function WorkspacePage({
         <div className="ui-card p-6">
           <p className="text-xs uppercase tracking-[0.16em] text-[var(--color-text-muted)]">Current workspace</p>
           <h2 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">{currentWorkspace?.name ?? 'No workspace selected'}</h2>
-          <p className="mt-3 text-sm text-[var(--color-text-secondary)]">{currentWorkspace?.description ?? 'No description set yet.'}</p>
+          <p className="mt-3 text-sm text-[var(--color-text-secondary)]">{currentWorkspace?.description || '—'}</p>
           <div className="mt-6 inline-flex rounded-md bg-[#F3F4F6] px-3 py-2 text-sm text-[var(--color-text-primary)]">
             Environment: {currentWorkspace?.environment_type ?? 'development'}
           </div>
@@ -1615,7 +1442,6 @@ function Dashboard({
   onLogout,
   onClusterCreated,
   userProfile,
-  onCreateAction,
 }: {
   workspaces: WorkspaceRecord[];
   selectedWorkspaceId: number | null;
@@ -1630,7 +1456,6 @@ function Dashboard({
   onLogout: () => void;
   onClusterCreated: (cluster: ClusterRecord) => void;
   userProfile: UserProfile;
-  onCreateAction: (payload: { incidentId: number; description: string; type: 'manual' | 'automated' }) => Promise<void>;
 }) {
   const [activeSection, setActiveSection] = useState<Section>('Overview');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -1670,7 +1495,7 @@ function Dashboard({
           services={platformData.services}
           selectedIncidentId={selectedIncidentId}
           onSelectIncident={setSelectedIncidentId}
-          onCreateAction={onCreateAction}
+          onOpenChat={() => setActiveSection('Chat')}
         />
       );
     }
@@ -1701,6 +1526,7 @@ function Dashboard({
       <OverviewPage
         services={platformData.services}
         incidents={platformData.incidents}
+        actions={platformData.actions}
         loading={platformData.loading}
         error={platformData.error}
         onFix={(incidentId) => {
@@ -1825,9 +1651,9 @@ function App() {
   const [selectedClusterId, setSelectedClusterId] = useState<number | null>(null);
   const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile>({
-    name: 'SRE Operator',
-    email: 'operator@autonops.local',
-    picture: 'https://www.gstatic.com/images/branding/product/1x/avatar_circle_blue_512dp.png',
+    name: '',
+    email: '',
+    picture: '',
   });
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     const storedTheme = localStorage.getItem('ui_theme');
@@ -1930,9 +1756,9 @@ function App() {
 
     const profile = await response.json() as { name?: string; email?: string; picture?: string };
     const nextProfile: UserProfile = {
-      name: profile.name?.trim() || 'SRE Operator',
-      email: profile.email?.trim() || 'operator@autonops.local',
-      picture: profile.picture?.trim() || 'https://www.gstatic.com/images/branding/product/1x/avatar_circle_blue_512dp.png',
+      name: profile.name?.trim() || '',
+      email: profile.email?.trim() || '',
+      picture: profile.picture?.trim() || '',
     };
 
     setUserProfile(nextProfile);
@@ -2000,31 +1826,6 @@ function App() {
 
     persistAccessToken(data.access_token);
     await Promise.all([loadWorkspaces(), loadUserProfile(data.access_token)]);
-  };
-
-  const handleCreateAction = async (payload: { incidentId: number; description: string; type: 'manual' | 'automated' }) => {
-    const actionPayload: Record<string, unknown> = {
-      description: payload.description,
-      type: payload.type,
-      cluster_id: selectedClusterId,
-    };
-
-    // Runtime cluster incidents are synthetic and may not exist in DB.
-    // Only attach incident_id when browsing persisted incidents without cluster runtime mode.
-    if (!selectedClusterId) {
-      actionPayload.incident_id = payload.incidentId;
-    }
-
-    const response = await fetch(`${API_BASE_URL}/actions/`, {
-      method: 'POST',
-      headers: getAuthenticatedHeaders(),
-      body: JSON.stringify(actionPayload),
-    });
-
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({ detail: 'Failed to create action.' }));
-      throw new Error((data as { detail?: string }).detail ?? 'Failed to create action.');
-    }
   };
 
   const handleGoogleLogin = async () => {
@@ -2128,9 +1929,9 @@ function App() {
     setClusters([]);
     setSelectedClusterId(null);
     setUserProfile({
-      name: 'SRE Operator',
-      email: 'operator@autonops.local',
-      picture: 'https://www.gstatic.com/images/branding/product/1x/avatar_circle_blue_512dp.png',
+      name: '',
+      email: '',
+      picture: '',
     });
   };
 
@@ -2179,7 +1980,6 @@ function App() {
                 onLogout={handleLogout}
                 onClusterCreated={handleClusterCreated}
                 userProfile={userProfile}
-                onCreateAction={handleCreateAction}
               />
             ) : (
               <Navigate to="/login" replace />

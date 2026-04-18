@@ -105,6 +105,15 @@ export default function Header({
     () => clusters.find((cluster) => cluster.id === selectedClusterId) ?? null,
     [selectedClusterId, clusters],
   );
+  const userInitials = useMemo(() => {
+    const source = userName || userEmail || 'U';
+    return source
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? '')
+      .join('') || 'U';
+  }, [userEmail, userName]);
 
   useEffect(() => {
     if (!openMenu) {
@@ -270,17 +279,29 @@ export default function Header({
               onClick={() => setOpenMenu((current) => (current === 'profile' ? null : 'profile'))}
               className={menuButtonClass}
             >
-              <img src={userAvatarUrl} alt={userName} className="h-7 w-7 rounded-full border border-[var(--color-border)] object-cover" />
+              {userAvatarUrl ? (
+                <img src={userAvatarUrl} alt={userName || 'User'} className="h-7 w-7 rounded-full border border-[var(--color-border)] object-cover" />
+              ) : (
+                <div className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface-elevated)] text-[10px] font-semibold text-[var(--color-text-primary)]">
+                  {userInitials}
+                </div>
+              )}
               <ChevronDown size={16} className="text-[var(--color-text-light)]" />
             </motion.button>
 
             <DropdownContainer open={openMenu === 'profile'}>
               <div className="px-3 pb-2">
                 <div className="flex items-center gap-3 rounded-md px-2 py-2">
-                  <img src={userAvatarUrl} alt={userName} className="h-9 w-9 rounded-full border border-[var(--color-border)] object-cover" />
+                  {userAvatarUrl ? (
+                    <img src={userAvatarUrl} alt={userName || 'User'} className="h-9 w-9 rounded-full border border-[var(--color-border)] object-cover" />
+                  ) : (
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface-elevated)] text-xs font-semibold text-[var(--color-text-primary)]">
+                      {userInitials}
+                    </div>
+                  )}
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-[var(--color-text-primary)]">{userName}</p>
-                    <p className="truncate text-xs text-[var(--color-text-muted)]">{userEmail}</p>
+                    <p className="truncate text-sm font-semibold text-[var(--color-text-primary)]">{userName || 'Authenticated user'}</p>
+                    <p className="truncate text-xs text-[var(--color-text-muted)]">{userEmail || 'No profile details available'}</p>
                   </div>
                 </div>
 
